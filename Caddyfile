@@ -1,0 +1,23 @@
+(termo_site) {
+  encode gzip zstd
+  root * /usr/share/caddy
+
+  route {
+    handle /Termo/* {
+      reverse_proxy envoy:8080
+    }
+
+    handle {
+      try_files {path} /index.html
+      file_server
+    }
+  }
+}
+
+http://termoonline.duckdns.org, http://144.33.14.208 {
+  import termo_site
+}
+
+termooo.online, www.termooo.online {
+  import termo_site
+}
