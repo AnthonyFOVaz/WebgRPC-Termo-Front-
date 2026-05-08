@@ -1,37 +1,33 @@
-# Termo Online - Frontend Modelo
+# Termo Online Frontend
 
-Este diretório é uma cópia separada do frontend atual, preparada para o backend que será implementado pelos colegas no repositório Java.
+Frontend do Termo Online, feito em React + Vite + TypeScript.
 
-Nada aqui depende do `backend/` local. O contrato gRPC que o backend deve seguir fica em:
+Este projeto foi separado para acompanhar o backend Java/gRPC que vai ser desenvolvido no outro repositório. O contrato que o backend precisa seguir está em:
 
 - `src/contracts/termo.proto`
 - `BACKEND_CONTRACT.md`
 
-## Escopo do produto
+## O que este front cobre
 
-Este modelo implementa somente os requisitos enviados:
-
-- nome do jogador;
-- fila de busca;
-- partida entre 2 jogadores;
-- validação de chute pelo backend;
-- cores da tentativa;
+- entrada com nome do jogador;
+- busca por adversário;
+- partida de 2 jogadores;
+- envio de palavras;
+- tabuleiro com cores;
 - eventos em tempo real;
 - vitória, derrota e empate;
-- palavra correta ao final;
-- pessoas online;
-- refresh durante partida;
-- proteção por token local;
+- palavra final da partida;
+- contador de pessoas online;
+- refresh durante a partida;
+- token local para proteger o jogador;
 - espectador por URL;
-- layout desktop e mobile;
-- gRPC-Web;
-- Caddy/HTTPS/proxy reverso para produção.
+- layout para desktop e celular.
 
-Não há ranking, histórico, login, salas privadas manuais, chat, perfil, estatísticas, tema extra ou persistência em banco.
+O projeto não tem login, ranking, histórico, chat ou banco de dados.
 
-## Rodar sem backend real
+## Rodar sem backend
 
-O mock é apenas ferramenta de desenvolvimento para testar o frontend antes do backend existir. Ele não é requisito de produto.
+Enquanto o backend ainda não estiver pronto, dá para usar um mock simples:
 
 ```powershell
 npm install
@@ -39,11 +35,9 @@ npm run generate
 $env:VITE_USE_MOCK_BACKEND="1"; npm run dev
 ```
 
-O mock permite navegar pelo fluxo mínimo enquanto o backend Java ainda está incompleto.
+## Rodar com backend
 
-## Rodar com backend real
-
-Quando o backend Java + Envoy estiverem prontos:
+Com o backend Java + Envoy rodando:
 
 ```powershell
 npm install
@@ -51,18 +45,15 @@ npm run generate
 $env:VITE_GRPC_URL="http://localhost:8080"; npm run dev
 ```
 
-Em produção, se `VITE_GRPC_URL` não for definido, o frontend usa `window.location.origin`. Assim `https://termooo.online/Termo/*` passa pelo Caddy e vai para o Envoy.
-
 ## Build
 
 ```powershell
 npm run build
 ```
 
-## Regras importantes
+## Observações
 
-- Token de jogador fica só no `sessionStorage`.
-- URL de partida usa só `/partida/{idPartida}`.
-- Quem abre a URL sem token entra como espectador.
-- O frontend espera gRPC-Web via Envoy.
-- O Caddyfile deste modelo já serve SPA e faz proxy de `/Termo/*` para `envoy:8080`.
+- O token do jogador fica no `sessionStorage`, nunca na URL.
+- A URL da partida usa apenas `/partida/{idPartida}`.
+- Quem abrir a URL sem token entra como espectador.
+- Em produção, o Caddy serve o frontend e manda `/Termo/*` para o Envoy.
