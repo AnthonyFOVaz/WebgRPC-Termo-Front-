@@ -1,80 +1,83 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "com.seuprojeto.termo.grpc";
+option java_package = "br.com.ucsal.termo.grpc";
 
 service Termo {
-    // Entra na fila. A resposta so chega quando o backend parear dois jogadores.
     rpc Conectar (JogadorRequest) returns (LobbyResponse);
-
-    // Envia chute do jogador. Backend deve validar token antes de aceitar.
     rpc EnviarPalavra (TentativaRequest) returns (TentativaResponse);
-
-    // Stream da partida. Jogador usa token; espectador usa assistir=true sem token.
     rpc MonitorarPartida (PartidaRequest) returns (stream EventoPartida);
-
-    // Stream global para contador "pessoas online".
-    rpc MonitorarOnline (OnlineRequest) returns (stream OnlineResponse);
-}
-
-message OnlineRequest {}
-
-message OnlineResponse {
-    int32 pessoas_online = 1;
+    rpc BuscarEstadoPartida (PartidaRequest) returns (EstadoPartidaResponse);
+    rpc JogadoresDisponiveis (LobbyRequest) returns (stream LobbyStatusResponse);
+    rpc AssistirPartida (AssistirPartidaRequest) returns (stream EstadoPartidaEspectadorResponse);
 }
 
 message JogadorRequest {
     string nome = 1;
-    // Id local da aba. Backend usa para impedir que F5 no lobby pareie usuario consigo mesmo.
-    string client_session_id = 2;
+}
+
+message LobbyRequest {
+    bool lobby_ativo = 1;
 }
 
 message LobbyResponse {
-    string id_jogador = 1;
-    string id_partida = 2;
-    string nome_oponente = 3;
-    // Segredo do jogador. Front guarda em sessionStorage; nunca colocar na URL.
-    string token_jogador = 4;
+    string id_jogador1 = 1;
+    string nome_jogador1 = 2;
+    string id_partida = 3;
+    string nome_oponente = 4;
+    string id_oponente = 5;
+}
+
+message LobbyStatusResponse {
+    int32 quantidade_jogadores = 1;
 }
 
 message TentativaRequest {
-    string id_jogador = 1;
+    string id_jogador1 = 1;
     string id_partida = 2;
     string palavra_chutada = 3;
-    string token_jogador = 4;
 }
 
 message TentativaResponse {
-    repeated int32 cores = 1;          // 0=cinza, 1=amarelo, 2=verde
+    repeated int32 cores = 1;
     bool acertou = 2;
     int32 tentativas_restantes = 3;
-    bool palavra_invalida = 4;
+    string palavra_secreta = 4;
 }
 
 message PartidaRequest {
     string id_jogador = 1;
     string id_partida = 2;
-    string token_jogador = 3;
-    // true = visitante com URL assiste, mas nao controla a partida.
-    bool assistir = 4;
-}
-
-enum TipoEvento {
-    OPONENTE_JOGOU = 0;
-    OPONENTE_VENCEU = 1;
-    OPONENTE_ESGOTOU = 2;
-    PARTIDA_ENCERRADA = 3;
-    ESPECTADOR_JOGOU = 4;
 }
 
 message EventoPartida {
-    TipoEvento tipo = 1;
-    string mensagem = 2;
-    repeated int32 cores_oponente = 3;
-    int32 tentativa_numero = 4;
-    bool empate = 5;
-    string palavra_secreta = 6;
-    bool voce_venceu = 7;
-    string id_jogador = 8;
-    string nome_jogador = 9;
+    bool oponente_ganhou = 1;
+    int32 oponente_chutou = 2;
+    string mensagem = 3;
+}
+
+message EstadoPartidaResponse {
+    repeated string historico_chutes = 1;
+    repeated ResultadoCores historico_cores = 2;
+    int32 tentativas_restantes = 3;
+    bool finalizada = 4;
+    string palavra_secreta = 5;
+}
+
+message ResultadoCores {
+    repeated int32 cores = 1;
+}
+
+message EstadoPartidaEspectadorResponse {
+    string id_partida = 1;
+    repeated ResultadoCores historico_cores_jogador1 = 2;
+    repeated ResultadoCores historico_cores_jogador2 = 3;
+    int32 tentativas_restantes_jogador1 = 4;
+    int32 tentativas_restantes_jogador2 = 5;
+    bool finalizada = 6;
+    string palavra_secreta = 7;
+}
+
+message AssistirPartidaRequest {
+    string id_partida = 1;
 }

@@ -6,7 +6,6 @@ import { termoClient } from "./lib/client";
 import {
   clearActiveMatch,
   clearMatchState,
-  getClientSessionId,
   loadActiveMatch,
   matchIdFromLocation,
   saveActiveMatch,
@@ -48,8 +47,8 @@ export default function App() {
         onlineAbortRef.current = controller;
 
         try {
-          for await (const status of termoClient.monitorarOnline({}, { signal: controller.signal })) {
-            setOnlineCount(status.pessoasOnline);
+          for await (const status of termoClient.jogadoresDisponiveis({ lobbyAtivo: true }, { signal: controller.signal })) {
+            setOnlineCount(status.quantidadeJogadores);
           }
         } catch (err) {
           if (!stopped) {
@@ -90,14 +89,17 @@ export default function App() {
     setPhase({ name: "lobby", playerName: name });
 
     try {
-      // Conectar blocks until backend finds an opponent. clientSessionId prevents self-match.
-      const lobby = await termoClient.conectar({ nome: name, clientSessionId: getClientSessionId() });
+      // Backend atual bloqueia esta chamada ate parear dois jogadores.
+      const lobby = await termoClient.conectar({ nome: name });
+      if (!lobby.idJogador1 || !lobby.idPartida) {
+        throw new Error("LobbyResponse incompleta");
+      }
       const activeMatch = {
         playerName: name,
-        opponentName: lobby.nomeOponente,
-        idJogador: lobby.idJogador,
+        opponentName: lobby.nomeOponente || "Adversario",
+        idJogador: lobby.idJogador1,
         idPartida: lobby.idPartida,
-        tokenJogador: lobby.tokenJogador,
+        tokenJogador: lobby.idJogador1,
       };
       const match = { name: "match", ...activeMatch } as const;
 

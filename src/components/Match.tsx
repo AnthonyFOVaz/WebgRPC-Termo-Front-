@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { Board } from "./Board";
 import { Keyboard, deriveKeyStatus } from "./Keyboard";
 import { EndCard } from "./EndCard";
 import { termoClient } from "../lib/client";
 import { corNumerosParaStatus, type Guess } from "../lib/types";
-import { TipoEvento } from "../gen/termo_pb";
 import { loadMatchState, saveMatchState } from "../lib/session";
 
 const WORD_LEN = 5;
 const MAX_ATTEMPTS = 6;
+const BACKEND_TOKEN_HEADER = "x-jogdor-token";
 
 interface Props {
   idJogador: string;
@@ -22,6 +23,29 @@ interface Props {
 }
 
 type Outcome = "win" | "lose" | "draw" | "watch" | null;
+type BackendSide = "j1" | "j2";
+
+function guessRowsFromHistory(rows: readonly { cores: readonly number[] }[]): Guess[] {
+  return rows.map((row) => ({ word: "", colors: corNumerosParaStatus(row.cores) }));
+}
+
+function colorsKey(cores: readonly number[]) {
+  return Array.from(cores).join(",");
+}
+
+function lastColorsKey(rows: readonly { cores: readonly number[] }[]) {
+  const last = rows[rows.length - 1];
+  return last ? colorsKey(last.cores) : "";
+}
+
+function guessColorsKey(guess: Guess) {
+  return guess.colors.map((status) => status === "hit" ? 2 : status === "present" ? 1 : 0).join(",");
+}
+
+function historyStartsWithGuesses(rows: readonly { cores: readonly number[] }[], guesses: readonly Guess[]) {
+  if (guesses.length === 0 || rows.length < guesses.length) return false;
+  return guesses.every((guess, index) => colorsKey(rows[index].cores) === guessColorsKey(guess));
+}
 
 export function Match({
   idJogador,
@@ -44,9 +68,15 @@ export function Match({
   const [youSolved, setYouSolved] = useState(initialState?.youSolved ?? false);
   const [youOut, setYouOut] = useState(initialState?.youOut ?? false);
   const [spectatorNames, setSpectatorNames] = useState({ left: "Jogador 1", right: "Jogador 2" });
-  const spectatorIdsRef = useRef<string[]>([]);
   const sendingRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
+  const selfSideRef = useRef<BackendSide | null>(null);
+  const pendingOwnColorsRef = useRef<string | null>(null);
+  const youGuessesRef = useRef(youGuesses);
+  const outcomeRef = useRef(outcome);
+  const answerRef = useRef(answer);
+  const youSolvedRef = useRef(youSolved);
+  const youOutRef = useRef(youOut);
 
   // Spectators never get input. Players also stop after finishing their own board.
   const stopInput = spectator || !!outcome || youSolved || youOut;
@@ -57,15 +87,11 @@ export function Match({
     toastTimerRef.current = window.setTimeout(() => setToast(null), 1400);
   };
 
-  const spectatorSideFor = (playerId: string, name: string) => {
-    const ids = spectatorIdsRef.current;
-    if (playerId && !ids.includes(playerId) && ids.length < 2) {
-      ids.push(playerId);
-      const side = ids.length === 1 ? "left" : "right";
-      setSpectatorNames(prev => ({ ...prev, [side]: name || `Jogador ${ids.length}` }));
-    }
-    return ids.indexOf(playerId) === 0 ? "left" : "right";
-  };
+  useEffect(() => { youGuessesRef.current = youGuesses; }, [youGuesses]);
+  useEffect(() => { outcomeRef.current = outcome; }, [outcome]);
+  useEffect(() => { answerRef.current = answer; }, [answer]);
+  useEffect(() => { youSolvedRef.current = youSolved; }, [youSolved]);
+  useEffect(() => { youOutRef.current = youOut; }, [youOut]);
 
   // Local snapshot is only for F5 in same tab. Backend remains source of truth.
   useEffect(() => {
@@ -86,33 +112,62 @@ export function Match({
 
     (async () => {
       try {
-        // For players, backend must validate idJogador + tokenJogador.
-        // For spectators, assistir=true means read-only stream by URL.
-        const stream = termoClient.monitorarPartida(
-          { idJogador, idPartida, tokenJogador, assistir: spectator },
-          { signal: ac.signal },
-        );
+        const stream = termoClient.assistirPartida({ idPartida }, { signal: ac.signal });
 
-        for await (const ev of stream) {
-          if (ev.tipo === TipoEvento.ESPECTADOR_JOGOU) {
-            // Spectator receives only colors and player names, never guessed words.
-            const colors = corNumerosParaStatus(ev.coresOponente);
-            const side = spectatorSideFor(ev.idJogador, ev.nomeJogador);
-            if (side === "left") setYouGuesses(g => [...g, { word: "", colors }]);
-            else setOppGuesses(g => [...g, { word: "", colors }]);
-          } else if (ev.tipo === TipoEvento.OPONENTE_JOGOU) {
-            const colors = corNumerosParaStatus(ev.coresOponente);
-            setOppGuesses(g => [...g, { word: "", colors }]);
-          } else if (ev.tipo === TipoEvento.OPONENTE_VENCEU) {
-            showToast("Oponente acertou");
-          } else if (ev.tipo === TipoEvento.OPONENTE_ESGOTOU) {
-            showToast("Oponente esgotou tentativas");
-          } else if (ev.tipo === TipoEvento.PARTIDA_ENCERRADA) {
-            setAnswer(ev.palavraSecreta);
-            if (spectator) setOutcome("watch");
-            else if (ev.empate) setOutcome("draw");
-            else if (ev.voceVenceu) setOutcome("win");
+        for await (const state of stream) {
+          const j1 = guessRowsFromHistory(state.historicoCoresJogador1);
+          const j2 = guessRowsFromHistory(state.historicoCoresJogador2);
+
+          if (spectator) {
+            setSpectatorNames({ left: "Jogador 1", right: "Jogador 2" });
+            setYouGuesses(j1);
+            setOppGuesses(j2);
+            if (state.finalizada && !outcomeRef.current) {
+              setAnswer(state.palavraSecreta);
+              setOutcome("watch");
+            }
+            continue;
+          }
+
+          let side = selfSideRef.current;
+          const ownGuesses = youGuessesRef.current;
+          if (!side && ownGuesses.length > 0) {
+            const j1LooksOwn = historyStartsWithGuesses(state.historicoCoresJogador1, ownGuesses);
+            const j2LooksOwn = historyStartsWithGuesses(state.historicoCoresJogador2, ownGuesses);
+            if (j1LooksOwn && !j2LooksOwn) side = "j1";
+            else if (j2LooksOwn && !j1LooksOwn) side = "j2";
+            if (side) selfSideRef.current = side;
+          }
+
+          const pendingOwnColors = pendingOwnColorsRef.current;
+          if (!side && pendingOwnColors) {
+            const ownCount = ownGuesses.length;
+            const j1Matches = lastColorsKey(state.historicoCoresJogador1) === pendingOwnColors;
+            const j2Matches = lastColorsKey(state.historicoCoresJogador2) === pendingOwnColors;
+            if (j1Matches && state.historicoCoresJogador1.length === ownCount) side = "j1";
+            else if (j2Matches && state.historicoCoresJogador2.length === ownCount) side = "j2";
+            else if (j1Matches && !j2Matches) side = "j1";
+            else if (j2Matches && !j1Matches) side = "j2";
+            if (side) {
+              selfSideRef.current = side;
+              pendingOwnColorsRef.current = null;
+            }
+          }
+
+          if (side === "j1") setOppGuesses(j2);
+          else if (side === "j2") setOppGuesses(j1);
+          else {
+            const ownCount = youGuessesRef.current.length;
+            if (j1.length > ownCount) setOppGuesses(j1);
+            else if (j2.length > ownCount) setOppGuesses(j2);
+            else setOppGuesses(j1.length >= j2.length ? j1 : j2);
+          }
+
+          if (state.finalizada && !outcomeRef.current) {
+            if (youSolvedRef.current) setOutcome("win");
+            else if (youOutRef.current) setOutcome("draw");
             else setOutcome("lose");
+            if (!answerRef.current) setAnswer(state.palavraSecreta);
           }
         }
       } catch (err) {
@@ -124,7 +179,7 @@ export function Match({
     })();
 
     return () => ac.abort();
-  }, [idJogador, idPartida, tokenJogador, spectator]);
+  }, [idPartida, spectator]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -155,27 +210,37 @@ export function Match({
     try {
       // tokenJogador is what prevents a shared URL from controlling a player.
       const resp = await termoClient.enviarPalavra({
-        idJogador,
+        idJogador1: idJogador,
         idPartida,
         palavraChutada: word,
-        tokenJogador,
+      }, {
+        headers: { [BACKEND_TOKEN_HEADER]: tokenJogador || idJogador },
       });
 
-      if (resp.palavraInvalida) {
-        setShaking(true);
-        window.setTimeout(() => setShaking(false), 500);
-        showToast("Palavra nao existe");
-        return;
-      }
-
       const colors = corNumerosParaStatus(resp.cores);
+      pendingOwnColorsRef.current = colorsKey(resp.cores);
       setYouGuesses(g => [...g, { word, colors }]);
       setCurrent("");
-      if (resp.acertou) setYouSolved(true);
-      else if (resp.tentativasRestantes === 0) setYouOut(true);
+      if (resp.acertou) {
+        setYouSolved(true);
+        setAnswer(resp.palavraSecreta || word);
+        setOutcome("win");
+      } else if (resp.tentativasRestantes === 0) {
+        setYouOut(true);
+        if (resp.palavraSecreta) {
+          setAnswer(resp.palavraSecreta);
+          setOutcome("draw");
+        }
+      }
     } catch (err) {
       console.error(err);
-      showToast("Erro ao enviar");
+      if (err instanceof ConnectError && err.code === Code.InvalidArgument) {
+        setShaking(true);
+        window.setTimeout(() => setShaking(false), 500);
+        showToast(err.message.toLowerCase().includes("inv") ? "Palavra nao existe" : "Jogada recusada");
+      } else {
+        showToast("Erro ao enviar");
+      }
     } finally {
       sendingRef.current = false;
     }

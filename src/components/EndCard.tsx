@@ -7,6 +7,7 @@ interface Props {
 }
 
 export function EndCard({ outcome, answer, youAttempts, oppAttempts, onPlayAgain }: Props) {
+  const visibleAnswer = answer || "?????";
   const titles = {
     win: "Voce venceu",
     lose: "Voce perdeu",
@@ -25,9 +26,9 @@ export function EndCard({ outcome, answer, youAttempts, oppAttempts, onPlayAgain
       <div className="endcard-title">{titles[outcome]}</div>
       <div className="endcard-sub">{subs[outcome]}</div>
       <div className="endcard-answer">
-        <div className="endcard-answer-label">a palavra era</div>
+        <div className="endcard-answer-label">{answer ? "a palavra era" : "palavra nao informada"}</div>
         <div className="endcard-answer-tiles">
-          {answer.split("").map((l, i) => (
+          {visibleAnswer.split("").map((l, i) => (
             <div key={i} className="endcard-tile" style={{ animationDelay: `${i * 80}ms` }}>{l}</div>
           ))}
         </div>

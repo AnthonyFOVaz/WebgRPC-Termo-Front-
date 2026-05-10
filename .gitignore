@@ -3,4 +3,5 @@ dist
 src/gen
 .env
 *.log
+tsconfig.tsbuildinfo
 .DS_Store
