@@ -68,6 +68,7 @@ export function Match({
   const [youSolved, setYouSolved] = useState(initialState?.youSolved ?? false);
   const [youOut, setYouOut] = useState(initialState?.youOut ?? false);
   const [spectatorNames, setSpectatorNames] = useState({ left: "Jogador 1", right: "Jogador 2" });
+  const [endSubtitle, setEndSubtitle] = useState<string | undefined>(undefined);
   const sendingRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
   const selfSideRef = useRef<BackendSide | null>(null);
@@ -180,6 +181,38 @@ export function Match({
 
     return () => ac.abort();
   }, [idPartida, spectator]);
+
+  // Eventos da partida (ex: oponente desconectou). Espectadores nao recebem.
+  // Backend envia EventoPartida via stream MonitorarPartida; ao receber mensagem
+  // de fim, fecha a partida no UI mostrando EndCard com o motivo.
+  useEffect(() => {
+    if (spectator) return;
+    const ac = new AbortController();
+
+    (async () => {
+      try {
+        const stream = termoClient.monitorarPartida(
+          { idJogador, idPartida },
+          { signal: ac.signal },
+        );
+        for await (const evento of stream) {
+          if (!evento.mensagem) continue;
+          if (outcomeRef.current) continue;
+          if (evento.oponenteGanhou) {
+            setYouSolved(true);
+            setOutcome("win");
+          } else {
+            setOutcome("lose");
+          }
+          setEndSubtitle(evento.mensagem);
+        }
+      } catch (err) {
+        if (!ac.signal.aborted) console.error("monitor stream error", err);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [idJogador, idPartida, spectator]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -296,6 +329,7 @@ export function Match({
           youAttempts={youGuesses.length}
           oppAttempts={oppGuesses.length}
           onPlayAgain={onPlayAgain}
+          customSubtitle={endSubtitle}
         />
       ) : spectator ? (
         <div className="waiting-bar">Assistindo partida em tempo real</div>

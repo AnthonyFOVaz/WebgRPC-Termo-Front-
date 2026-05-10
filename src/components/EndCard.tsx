@@ -4,9 +4,10 @@ interface Props {
   youAttempts: number;
   oppAttempts: number;
   onPlayAgain: () => void;
+  customSubtitle?: string;
 }
 
-export function EndCard({ outcome, answer, youAttempts, oppAttempts, onPlayAgain }: Props) {
+export function EndCard({ outcome, answer, youAttempts, oppAttempts, onPlayAgain, customSubtitle }: Props) {
   const visibleAnswer = answer || "?????";
   const titles = {
     win: "Voce venceu",
@@ -24,7 +25,7 @@ export function EndCard({ outcome, answer, youAttempts, oppAttempts, onPlayAgain
   return (
     <div className={"endcard endcard-" + outcome}>
       <div className="endcard-title">{titles[outcome]}</div>
-      <div className="endcard-sub">{subs[outcome]}</div>
+      <div className="endcard-sub">{customSubtitle ?? subs[outcome]}</div>
       <div className="endcard-answer">
         <div className="endcard-answer-label">{answer ? "a palavra era" : "palavra nao informada"}</div>
         <div className="endcard-answer-tiles">
