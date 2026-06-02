@@ -14,10 +14,6 @@
   }
 }
 
-http://termoonline.duckdns.org, http://144.33.14.208 {
-  import termo_site
-}
-
-termooo.online, www.termooo.online {
+termoonline.duckdns.org {
   import termo_site
 }

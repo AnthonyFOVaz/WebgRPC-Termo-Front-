@@ -201,6 +201,8 @@ export function Match({
           if (evento.oponenteGanhou) {
             setYouSolved(true);
             setOutcome("win");
+          } else if (youOutRef.current) {
+            setOutcome("draw");
           } else {
             setOutcome("lose");
           }
