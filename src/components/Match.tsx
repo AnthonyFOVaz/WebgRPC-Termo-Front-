@@ -165,9 +165,19 @@ export function Match({
           }
 
           if (state.finalizada && !outcomeRef.current) {
-            if (youSolvedRef.current) setOutcome("win");
-            else if (youOutRef.current) setOutcome("draw");
-            else setOutcome("lose");
+            if (youSolvedRef.current) {
+              setOutcome("win");
+            } else if (youOutRef.current) {
+              const mySide = selfSideRef.current;
+              const oppTriesLeft = mySide === "j1"
+                ? state.tentativasRestantesJogador2
+                : mySide === "j2"
+                  ? state.tentativasRestantesJogador1
+                  : -1;
+              setOutcome(oppTriesLeft === 0 ? "draw" : "lose");
+            } else {
+              setOutcome("lose");
+            }
             if (!answerRef.current) setAnswer(state.palavraSecreta);
           }
         }
@@ -201,8 +211,6 @@ export function Match({
           if (evento.oponenteGanhou) {
             setYouSolved(true);
             setOutcome("win");
-          } else if (youOutRef.current) {
-            setOutcome("draw");
           } else {
             setOutcome("lose");
           }
